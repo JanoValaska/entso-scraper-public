@@ -1,0 +1,10 @@
+{
+  "method_name": "get_day_ahead_prices",
+  "parameters": {
+    "country_code": "CZ",
+    "end": {
+      "date": "current_date",
+      "time": "day_end"
+    }
+  }
+}

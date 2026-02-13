@@ -1,0 +1,16 @@
+{
+  "method_name": "query_load",
+  "parameters": {
+    "country_code": "DE",
+    "start": {
+      "date": "current_date",
+      "time": "current_time",
+      "offset": "-6h"
+    },
+    "end": {
+      "date": "current_date",
+      "time": "current_time"
+    },
+    "timezone": "Europe/Berlin"
+  }
+}

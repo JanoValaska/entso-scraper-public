@@ -1,0 +1,16 @@
+{
+  "method_name": "query_day_ahead_prices",
+  "parameters": {
+    "country_code": "CZ",
+    "start": {
+      "date": "current_date",
+      "time": "day_start",
+      "offset": "-1d"
+    },
+    "end": {
+      "date": "current_date",
+      "time": "day_start"
+    },
+    "timezone": "Europe/Prague"
+  }
+}
