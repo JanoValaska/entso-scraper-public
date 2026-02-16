@@ -13,8 +13,8 @@ SAM_BUILD_IMAGE="${SAM_BUILD_IMAGE:-public.ecr.aws/sam/build-python3.13:latest}"
 docker run --rm \
   --platform linux/amd64 \
   --user "$(id -u):$(id -g)" \
-  -v "$MODULE_DIR":/var/task \
-  -w /var/task \
+  --volume "$MODULE_DIR:/var/task" \
+  --workdir /var/task \
   "$SAM_BUILD_IMAGE" \
   python -m pip install -r requirements-layer.txt -t layer/python
 
