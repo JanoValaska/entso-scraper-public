@@ -43,7 +43,7 @@ Create a managed policy that will be used by both the IAM user and the OIDC role
 
 1. Go to AWS Console → IAM → Policies → Create Policy
 2. Click JSON tab and paste contents of `docs/policies/terraform-deployer-policy.json`
-3. Name: `TerraformDeployerPolicy`
+3. Name: `entso-scraper-terraform-deployer-policy`
 4. Description: "Permissions for Terraform to deploy ENTSO-E scraper infrastructure"
 5. Create policy
 
@@ -53,7 +53,7 @@ Create an IAM user for local Terraform deployments:
 
 1. Go to AWS Console → IAM → Users → Create User
 2. User name: `TerraformDeployer`
-3. Attach the `TerraformDeployerPolicy` created in step 1
+3. Attach the `entso-scraper-terraform-deployer-policy` created in step 1
 4. Under "Security credentials" → Create Access Key → Choose "Command Line Interface (CLI)"
 5. Save the Access Key ID and Secret Access Key
 
@@ -77,8 +77,8 @@ Create an IAM role for GitHub Actions to use OIDC authentication:
 4. Audience: `sts.amazonaws.com`
 5. GitHub organization: `YOUR_GITHUB_USERNAME`
 6. GitHub repository: `YOUR_REPO_NAME`
-7. Role name: `GitHubActionsDeployerRole`
-8. Attach the `TerraformDeployerPolicy` created in step 1
+7. Role name: `entso-scraper-githubactions-deployer-role`
+8. Attach the `entso-scraper-terraform-deployer-policy` created in step 1
 
 **Step 3c: Update Trust Policy**
 
@@ -96,7 +96,7 @@ The trust policy should restrict access to your specific GitHub repository.
 1. Go to your GitHub repository → Settings → Secrets and variables → Actions
 2. Add new repository secret:
    - Name: `AWS_ROLE_TO_ASSUME`
-   - Value: `arn:aws:iam::YOUR_ACCOUNT_ID:role/GitHubActionsDeployerRole`
+   - Value: `arn:aws:iam::YOUR_ACCOUNT_ID:role/entso-scraper-githubactions-deployer-role`
 
 ### 4. Configure AWS Credentials (Local Development)
 
