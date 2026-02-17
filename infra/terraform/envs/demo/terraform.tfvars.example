@@ -1,0 +1,3 @@
+aws_region       = "eu-central-1"
+environment      = "demo"
+data_bucket_name = "your-unique-data-bucket-name"

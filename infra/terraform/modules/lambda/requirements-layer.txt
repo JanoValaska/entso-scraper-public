@@ -1,0 +1,4 @@
+entsoe-py
+pandas==2.3.3
+numpy==2.3.3
+# omit boto3 unless you need to pin it

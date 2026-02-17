@@ -1,0 +1,16 @@
+{
+  "method_name": "query_generation_forecast",
+  "parameters": {
+    "country_code": "AT",
+    "start": {
+      "date": "current_date",
+      "time": "day_start"
+    },
+    "end": {
+      "date": "current_date",
+      "time": "day_start",
+      "offset": "+7d"
+    },
+    "timezone": "Europe/Vienna"
+  }
+}
