@@ -15,11 +15,21 @@ References:
 
 import os
 import re
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple, Union
+import json
+import logging
+from datetime import datetime, UTC
+
+from typing import Any
 
 import boto3
 import pandas as pd
+
+# Configure structured logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# CSV export format
+CSV_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"  # ISO 8601 UTC format
 
 # Global cache for API token (survives warm Lambda invocations)
 _cached_token = None
@@ -51,10 +61,13 @@ def get_api_token() -> str:
     if _cached_token is not None:
         return _cached_token
 
-    try:
-        env = os.environ.get("ENVIRONMENT", "demo")
-        parameter_name = f"/entso-scraper/{env}/entso-api-token"
+    env = os.environ.get("ENVIRONMENT")
+    if not env:
+        raise ValueError("ENVIRONMENT is not set; cannot build SSM parameter name.")
 
+    parameter_name = f"/entso-scraper/{env}/entso-api-token"
+
+    try:
         ssm = boto3.client("ssm")
         response = ssm.get_parameter(Name=parameter_name, WithDecryption=True)
         _cached_token = response["Parameter"]["Value"]
@@ -108,7 +121,7 @@ def _to_utc(ts: pd.Timestamp) -> pd.Timestamp:
     return ts.tz_convert("UTC")
 
 
-def format_datetime_utc_for_key(value: Union[pd.Timestamp, datetime]) -> str:
+def format_datetime_utc_for_key(value: pd.Timestamp | datetime) -> str:
     """
     Format a datetime-like value as a filename-safe UTC string.
 
@@ -133,13 +146,13 @@ def _apply_offset(base: pd.Timestamp, offset: str) -> pd.Timestamp:
     """
     Apply an offset like -1d, +6h, +30m, +1w, +1M to a base timestamp.
     """
-    m = _RELATIVE_PATTERN.match(offset.strip())
-    if not m:
+    _match = _RELATIVE_PATTERN.match(offset.strip())
+    if not _match:
         raise ValueError(
             f"Invalid offset '{offset}'. Supported: '+/-{{number}}{{unit}}' where unit is m/h/d/w/M."
         )
 
-    sign, number, unit = m.groups()
+    sign, number, unit = _match.groups()
     number_i = int(number)
     if sign == "-":
         number_i = -number_i
@@ -168,15 +181,14 @@ def _resolve_date_token(date_token: str, timezone: str) -> pd.Timestamp:
     - current_date
     - YYYY-MM-DD
     """
-    now = _now_in_tz(timezone)
-    token = date_token.strip().lower()
+    raw_token = date_token.strip()
 
-    if token == "current_date":
-        return now.normalize()
+    if raw_token.lower() == "current_date":
+        return _now_in_tz(timezone).normalize()
 
-    if _ISO_DATE_PATTERN.match(date_token.strip()):
+    if _ISO_DATE_PATTERN.match(raw_token):
         # Interpret explicit date in provided timezone at midnight
-        naive = pd.Timestamp(date_token.strip())
+        naive = pd.Timestamp(raw_token)
         try:
             # Midnight is typically safe, but keep strict DST handling.
             return naive.tz_localize(
@@ -193,7 +205,7 @@ def _resolve_date_token(date_token: str, timezone: str) -> pd.Timestamp:
 
 def _resolve_time_token(
     time_token: str, date_start: pd.Timestamp, timezone: str
-) -> Tuple[bool, pd.Timestamp]:
+) -> pd.Timestamp:
     """
     Resolve time token into a base datetime.
 
@@ -207,41 +219,42 @@ def _resolve_time_token(
       - if is_day_end=True, timestamp is next midnight for the given date
       - otherwise, timestamp is date_start + time-of-day
     """
-    now = _now_in_tz(timezone)
+
     token = time_token.strip().lower()
 
     if token == "current_time":
+        now = _now_in_tz(timezone)
         tod = now - now.normalize()
-        return False, date_start + tod
+        return date_start + tod
 
     if token == "day_start":
-        return False, date_start
+        return date_start
 
     if token == "day_end":
         # Next midnight (recommended for half-open ranges)
-        return True, date_start + pd.Timedelta(days=1)
+        return date_start + pd.Timedelta(days=1)
 
-    m = _TIME_PATTERN.match(time_token.strip())
-    if not m:
+    _match = _TIME_PATTERN.match(time_token.strip())
+    if not _match:
         raise ValueError(
             f"Invalid time token '{time_token}'. Supported: 'current_time', 'day_start', "
             f"'day_end', or 'HH:MM[:SS]'."
         )
 
-    hh, mm, ss = m.groups()
+    hh, mm, ss = _match.groups()
     h = int(hh)
-    mi = int(mm)
+    m = int(mm)
     s = int(ss) if ss is not None else 0
 
-    if not (0 <= h <= 23 and 0 <= mi <= 59 and 0 <= s <= 59):
+    if not (0 <= h <= 23 and 0 <= m <= 59 and 0 <= s <= 59):
         raise ValueError(
             f"Invalid time value '{time_token}'. Must be HH:MM[:SS] within valid ranges."
         )
 
-    return False, date_start + pd.Timedelta(hours=h, minutes=mi, seconds=s)
+    return date_start + pd.Timedelta(hours=h, minutes=m, seconds=s)
 
 
-def parse_datetime_object(obj: Dict[str, Any], timezone: str) -> pd.Timestamp:
+def parse_datetime_object(obj: dict[str, Any], timezone: str) -> pd.Timestamp:
     """
     Parse structured datetime object:
       {
@@ -271,7 +284,7 @@ def parse_datetime_object(obj: Dict[str, Any], timezone: str) -> pd.Timestamp:
         raise ValueError("Datetime object must contain 'date' and 'time' fields")
 
     date_start = _resolve_date_token(str(obj["date"]), timezone)
-    _, base = _resolve_time_token(str(obj["time"]), date_start, timezone)
+    base = _resolve_time_token(str(obj["time"]), date_start, timezone)
 
     # Apply offset last (optional)
     offset = obj.get("offset")
@@ -281,7 +294,7 @@ def parse_datetime_object(obj: Dict[str, Any], timezone: str) -> pd.Timestamp:
     return _to_utc(base)
 
 
-def parse_event_parameters(parameters: Dict[str, Any]) -> Dict[str, Any]:
+def parse_event_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
     """
     Parse all parameters in event, converting structured start/end to UTC Timestamps.
 
@@ -309,9 +322,9 @@ def parse_event_parameters(parameters: Dict[str, Any]) -> Dict[str, Any]:
     # validate timezone early
     _ = _now_in_tz(timezone)
 
-    parsed: Dict[str, Any] = {}
+    parsed: dict[str, Any] = {}
 
-    # Enforce new format only
+    # Check expected params
     if "start" not in parameters or "end" not in parameters:
         raise ValueError(
             "Parameters must contain both 'start' and 'end' as structured datetime objects"
@@ -376,8 +389,8 @@ def sanitize_parameter_value(value: Any) -> str:
 
 def generate_s3_key(
     method_name: str,
-    parameters: Dict[str, Any],
-    param_order: Optional[List[str]] = None,
+    parameters: dict[str, Any],
+    param_order: list[str] | None = None,
 ) -> str:
     """
     Generate S3 key from method name and parameters.
@@ -388,7 +401,7 @@ def generate_s3_key(
     then any remaining parameters are appended alphabetically.
     """
     # Build an ordered list of (key, value)
-    items: List[Tuple[str, Any]] = []
+    items: list[tuple[str, Any]] = []
 
     if param_order:
         # add keys in signature order if present
@@ -415,7 +428,7 @@ def generate_s3_key(
     params_encoded = "__".join(param_parts)
 
     # Generate timestamp (execution time, not data time)
-    timestamp = format_datetime_utc_for_key(datetime.now(timezone.utc))
+    timestamp = format_datetime_utc_for_key(datetime.now(UTC))
 
     # Construct full key (created_ prefix)
     filename = f"{params_encoded}__created_{timestamp}.csv"
@@ -424,7 +437,7 @@ def generate_s3_key(
     return s3_key
 
 
-def validate_event(event: Dict[str, Any]) -> None:
+def validate_event(event: dict[str, Any]) -> None:
     """
     Validate EventBridge event structure.
 
@@ -478,3 +491,60 @@ def validate_method_name(method_name: str) -> None:
             f"Invalid method name '{method_name}'. "
             f"Only methods starting with 'query_' are allowed."
         )
+
+def to_timeseries_dataframe(data: Any, method_name: str) -> pd.DataFrame:
+    """
+    Normalize entsoe-py output (Series/DataFrame) into a DataFrame with:
+    - sorted DatetimeIndex
+    - timezone normalized to UTC where possible
+    - index named 'timestamp'
+    - Series gets a meaningful value column name
+    """
+    if isinstance(data, pd.Series):
+        s = data.sort_index()
+
+        # Ensure the values column has a stable name
+        value_col = s.name or method_name
+
+        # Normalize timezone on the index (best-effort)
+        if isinstance(s.index, pd.DatetimeIndex):
+            if s.index.tz is None:
+                logger.warning(
+                    json.dumps(
+                        {
+                            "event_type": "naive_datetime_index_detected",
+                            "message": "Series index has no timezone; localizing to UTC.",
+                            "method_name": method_name,
+                        }
+                    )
+                )
+                s.index = s.index.tz_localize("UTC")
+            else:
+                s = s.tz_convert("UTC")
+
+        df = s.rename(value_col).to_frame()
+
+    elif isinstance(data, pd.DataFrame):
+        df = data.sort_index()
+
+        if isinstance(df.index, pd.DatetimeIndex):
+            if df.index.tz is None:
+                logger.warning(
+                    json.dumps(
+                        {
+                            "event_type": "naive_datetime_index_detected",
+                            "message": "DataFrame index has no timezone; localizing to UTC.",
+                            "method_name": method_name,
+                        }
+                    )
+                )
+                df.index = df.index.tz_localize("UTC")
+            else:
+                df = df.tz_convert("UTC")
+    else:
+        raise ValueError(
+            f"EntsoePandasClient.{method_name} returned invalid type: {type(data)}"
+        )
+
+    df.index.name = "timestamp"
+    return df

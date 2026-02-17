@@ -41,9 +41,9 @@ This document describes the system architecture for the ENTSO-E data collection 
   - Bucket name: `entso-scraper-terraform-state` (configurable)
 
 ### Scheduling Layer
-- **EventBridge Rules:** Trigger Lambda on schedules
-  - 3 initial rules with different cron schedules
-  - Each rule contains complete configuration (method + parameters)
+- **EventBridge Scheduler:** Trigger Lambda on schedules
+  - 3 initial schedules with different cron schedules (grouped per environment in a schedule group)
+  - Each schedule contains complete configuration (method + parameters)
 
 ### Secrets Management
 - **SSM Parameter Store:** Stores ENTSO-E API token

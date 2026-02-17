@@ -26,11 +26,11 @@ import json
 import logging
 import os
 from io import StringIO
-from typing import Any, Dict
+from typing import Any
 
 import boto3
 from entsoe import EntsoePandasClient
-import pandas as pd
+
 
 from utils import (
     generate_s3_key,
@@ -38,75 +38,16 @@ from utils import (
     parse_event_parameters,
     validate_event,
     validate_method_name,
+    to_timeseries_dataframe,
+    CSV_TIMESTAMP_FORMAT
 )
 
 # Configure structured logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# CSV export format
-CSV_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"  # ISO 8601 UTC format
 
-
-def to_timeseries_dataframe(data: Any, method_name: str) -> pd.DataFrame:
-    """
-    Normalize entsoe-py output (Series/DataFrame) into a DataFrame with:
-    - sorted DatetimeIndex
-    - timezone normalized to UTC where possible
-    - index named 'timestamp'
-    - Series gets a meaningful value column name
-    """
-    if isinstance(data, pd.Series):
-        s = data.sort_index()
-
-        # Ensure the values column has a stable name
-        value_col = s.name or method_name
-
-        # Normalize timezone on the index (best-effort)
-        if isinstance(s.index, pd.DatetimeIndex):
-            if s.index.tz is None:
-                logger.warning(
-                    json.dumps(
-                        {
-                            "event_type": "naive_datetime_index_detected",
-                            "message": "Series index has no timezone; localizing to UTC.",
-                            "method_name": method_name,
-                        }
-                    )
-                )
-                s.index = s.index.tz_localize("UTC")
-            else:
-                s = s.tz_convert("UTC")
-
-        df = s.rename(value_col).to_frame()
-
-    elif isinstance(data, pd.DataFrame):
-        df = data.sort_index()
-
-        if isinstance(df.index, pd.DatetimeIndex):
-            if df.index.tz is None:
-                logger.warning(
-                    json.dumps(
-                        {
-                            "event_type": "naive_datetime_index_detected",
-                            "message": "DataFrame index has no timezone; localizing to UTC.",
-                            "method_name": method_name,
-                        }
-                    )
-                )
-                df.index = df.index.tz_localize("UTC")
-            else:
-                df = df.tz_convert("UTC")
-    else:
-        raise ValueError(
-            f"EntsoePandasClient.{method_name} returned invalid type: {type(data)}"
-        )
-
-    df.index.name = "timestamp"
-    return df
-
-
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Lambda handler for ENTSO-E data collection.
 

@@ -718,3 +718,30 @@ This document records all key architectural and design decisions made during the
 - Lambda logic updated to parse these structured objects.
 - Enhanced validation (e.g., ensuring `end > start` after parsing).
 - The `timezone` parameter is only used for parsing and is not passed to `entsoe-py`.
+
+---
+
+## [2026-02-17] D33: EventBridge Scheduler vs EventBridge Rules
+
+**Context:** The initial implementation used EventBridge Rules for scheduling Lambda invocations. However, EventBridge Scheduler is the newer, more feature-rich service specifically designed for scheduling tasks.
+
+**Options:**
+1. Keep EventBridge Rules - Legacy approach, limited flexibility.
+2. EventBridge Scheduler - Modern scheduling service with better features (one-time schedules, flexible schedules, retry policies).
+3. Hybrid approach - Mix of both depending on use case.
+
+**Decision:** Migrate to EventBridge Scheduler.
+
+**Rationale:**
+- EventBridge Scheduler is purpose-built for scheduling tasks.
+- More flexible scheduling options (one-time, rate-based, cron expressions).
+- Better visibility and management in AWS Console.
+- Integrated retry and dead-letter queue support.
+- EventBridge Rules are better suited for event-driven patterns, not periodic scheduling.
+- AWS recommends Scheduler for time-based invocations.
+
+**Consequences:**
+- Terraform modules must be updated to use `aws_scheduler_schedule` instead of `aws_cloudwatch_event_rule`.
+- IAM roles for Scheduler need to be created (separate from EventBridge Rules).
+- Different API for managing schedules.
+- Better operational visibility and control over scheduled tasks.

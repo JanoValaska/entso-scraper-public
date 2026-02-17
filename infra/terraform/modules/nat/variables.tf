@@ -19,12 +19,6 @@ variable "instance_type" {
   default     = "t4g.nano"
 }
 
-variable "ha" {
-  type        = bool
-  description = "Whether to enable high availability for fck-nat"
-  default     = false
-}
-
 variable "project" {
   type        = string
   description = "Project name"

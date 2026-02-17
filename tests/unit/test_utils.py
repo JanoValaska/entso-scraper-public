@@ -29,6 +29,7 @@ from utils import (
     parse_datetime_object,
     parse_event_parameters,
     sanitize_parameter_value,
+    to_timeseries_dataframe,
     validate_event,
     validate_method_name,
 )
@@ -72,6 +73,7 @@ class TestGetApiToken:
     def test_get_token_ssm_failure(self, mock_boto3_client, monkeypatch):
         """Test token retrieval failure from SSM."""
         monkeypatch.delenv("ENTSO_API_TOKEN", raising=False)
+        monkeypatch.setenv("ENVIRONMENT", "demo")  # Add this line
 
         # Mock SSM client to raise exception
         mock_ssm = MagicMock()
@@ -512,3 +514,90 @@ class TestValidateMethodName:
         """Test validation of empty method name."""
         with pytest.raises(ValueError, match="Only methods starting with 'query_'"):
             validate_method_name("")
+
+
+class TestToTimeseriesDataframe:
+    """Tests for to_timeseries_dataframe() function."""
+
+    def test_convert_series_to_dataframe(self):
+        """Test converting Series to DataFrame."""
+        # Create a Series with datetime index
+        index = pd.date_range("2026-02-10", periods=24, freq="h", tz="UTC")
+        data = pd.Series(range(24), index=index, name="value")
+
+        result = to_timeseries_dataframe(data, "query_test")
+
+        assert isinstance(result, pd.DataFrame)
+        assert result.index.name == "timestamp"
+        assert "value" in result.columns
+        assert len(result) == 24
+        assert str(result.index.tz) == "UTC"
+
+    def test_convert_series_without_name(self):
+        """Test converting Series without name uses method name."""
+        index = pd.date_range("2026-02-10", periods=24, freq="h", tz="UTC")
+        data = pd.Series(range(24), index=index)
+
+        result = to_timeseries_dataframe(data, "query_load")
+
+        assert isinstance(result, pd.DataFrame)
+        assert "query_load" in result.columns
+
+    def test_convert_dataframe(self):
+        """Test converting DataFrame."""
+        index = pd.date_range("2026-02-10", periods=24, freq="h", tz="UTC")
+        data = pd.DataFrame({"col1": range(24), "col2": range(24, 48)}, index=index)
+
+        result = to_timeseries_dataframe(data, "query_test")
+
+        assert isinstance(result, pd.DataFrame)
+        assert result.index.name == "timestamp"
+        assert "col1" in result.columns
+        assert "col2" in result.columns
+        assert len(result) == 24
+        assert str(result.index.tz) == "UTC"
+
+    def test_convert_series_naive_datetime_index(self):
+        """Test converting Series with naive datetime index."""
+        index = pd.date_range("2026-02-10", periods=24, freq="h")
+        data = pd.Series(range(24), index=index, name="value")
+
+        result = to_timeseries_dataframe(data, "query_test")
+
+        assert isinstance(result, pd.DataFrame)
+        assert str(result.index.tz) == "UTC"
+
+    def test_convert_dataframe_naive_datetime_index(self):
+        """Test converting DataFrame with naive datetime index."""
+        index = pd.date_range("2026-02-10", periods=24, freq="h")
+        data = pd.DataFrame({"col1": range(24)}, index=index)
+
+        result = to_timeseries_dataframe(data, "query_test")
+
+        assert isinstance(result, pd.DataFrame)
+        assert str(result.index.tz) == "UTC"
+
+    def test_convert_invalid_type(self):
+        """Test converting invalid data type."""
+        with pytest.raises(ValueError, match="returned invalid type"):
+            to_timeseries_dataframe("not a series or dataframe", "query_test")
+
+    def test_convert_series_sorts_index(self):
+        """Test that Series is sorted by index."""
+        # Create unsorted Series
+        index = pd.date_range("2026-02-10", periods=24, freq="h", tz="UTC")
+        data = pd.Series(range(24), index=index[::-1], name="value")  # Reverse order
+
+        result = to_timeseries_dataframe(data, "query_test")
+
+        assert result.index.is_monotonic_increasing
+
+    def test_convert_dataframe_sorts_index(self):
+        """Test that DataFrame is sorted by index."""
+        # Create unsorted DataFrame
+        index = pd.date_range("2026-02-10", periods=24, freq="h", tz="UTC")
+        data = pd.DataFrame({"col1": range(24)}, index=index[::-1])
+
+        result = to_timeseries_dataframe(data, "query_test")
+
+        assert result.index.is_monotonic_increasing

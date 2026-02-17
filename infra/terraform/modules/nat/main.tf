@@ -6,7 +6,7 @@ module "fck-nat" {
   vpc_id              = var.vpc_id
   subnet_id           = var.public_subnet_id
   instance_type       = var.instance_type
-  ha_mode             = var.ha
+  ha_mode             = false
   update_route_tables = false # Keep your custom route tables
 }
 

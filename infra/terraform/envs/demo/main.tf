@@ -10,7 +10,6 @@ module "nat" {
   public_subnet_id   = module.vpc.public_subnet_ids[0]
   private_subnet_ids = module.vpc.private_subnet_ids
   instance_type      = "t3.micro"
-  ha                 = false
   project            = local.project
   environment        = var.environment
 }
@@ -41,5 +40,4 @@ module "eventbridge" {
   project              = local.project
   environment          = var.environment
   lambda_function_arn  = module.lambda.lambda_function_arn
-  lambda_function_name = module.lambda.lambda_function_name
 }
