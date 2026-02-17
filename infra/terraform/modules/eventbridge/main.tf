@@ -115,7 +115,7 @@ resource "aws_scheduler_schedule" "actual_load_de" {
   }
 
   # Keep cron to stay aligned (00:00, 06:00, 12:00, 18:00 UTC)
-  schedule_expression          = "cron(*/5 * * * ? *)"
+  schedule_expression          = "cron(0 */6 * * ? *)"
   schedule_expression_timezone = "UTC"
 
   target {
